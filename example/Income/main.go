@@ -11,7 +11,7 @@ import (
 func main() {
 	code := "sz000001"
 
-	pull := extend.NewPullKline(extend.PullKlineConfig{
+	pull, err := extend.NewPullKline(extend.PullKlineConfig{
 		Codes:  []string{code},
 		Tables: []string{extend.Day},
 	})

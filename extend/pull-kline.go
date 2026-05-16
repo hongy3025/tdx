@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/injoyai/bar"
+	"github.com/injoyai/conv"
 	"github.com/injoyai/logs"
 	"github.com/injoyai/tdx"
 	"github.com/injoyai/tdx/lib/xorms"
@@ -64,7 +65,7 @@ type PullKlineConfig struct {
 	StartAt    time.Time //数据开始时间
 }
 
-func NewPullKline(cfg PullKlineConfig) *PullKline {
+func NewPullKline(cfg PullKlineConfig) (*PullKline, error) {
 	_tables := []*KlineTable(nil)
 	for _, v := range cfg.Tables {
 		_tables = append(_tables, KlineTableMap[v])
@@ -75,19 +76,69 @@ func NewPullKline(cfg PullKlineConfig) *PullKline {
 	if len(cfg.Dir) == 0 {
 		cfg.Dir = filepath.Join(tdx.DefaultDatabaseDir, "kline")
 	}
-	return &PullKline{
-		tables: _tables,
-		Config: cfg,
+
+	db, err := xorms.NewSqlite(filepath.Join(cfg.Dir, "update.db"))
+	if err != nil {
+		return nil, err
 	}
+
+	updated, err := tdx.NewUpdated(db, 15, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PullKline{
+		tables:  _tables,
+		Config:  cfg,
+		Updated: updated,
+	}, nil
 }
 
 type PullKline struct {
-	tables []*KlineTable
-	Config PullKlineConfig
+	tables  []*KlineTable
+	Config  PullKlineConfig
+	Updated *tdx.Updated
+}
+
+func (this *PullKline) Update(m *tdx.Manage) error {
+	if updated, err := this.Updated.Updated("pull"); err != nil || !updated {
+		if m.Workday.TodayIs() {
+			err = this.update(m)
+			if err != nil {
+				return err
+			}
+			err = this.Updated.Update("pull")
+			logs.PanicErr(err)
+		}
+	}
+	return nil
 }
 
 func (this *PullKline) Name() string {
 	return "拉取k线数据"
+}
+
+// DayKline 获取任意一天的数据,默认最新一天,即n=-1,同python支持负数
+func (this *PullKline) DayKline(code string, n ...int) (*Kline, error) {
+	ks, err := this.DayKlines(code)
+	if err != nil {
+		return nil, err
+	}
+
+	_n := conv.Default(-1, n...)
+	if _n >= 0 {
+		//数量不满足
+		if len(ks) <= _n {
+			return nil, err
+		}
+		return ks[_n], nil
+	}
+
+	if len(ks) < -_n {
+		return nil, err
+	}
+
+	return ks[len(ks)+_n], nil
 }
 
 func (this *PullKline) DayKlines(code string) (Klines, error) {
@@ -111,7 +162,7 @@ func (this *PullKline) Klines(table string, code string) (Klines, error) {
 	return data, err
 }
 
-func (this *PullKline) Update(m *tdx.Manage) error {
+func (this *PullKline) update(m *tdx.Manage) error {
 
 	_ = os.MkdirAll(this.Config.Dir, 0777)
 

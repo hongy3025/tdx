@@ -15,13 +15,14 @@ func main() {
 	m, err := tdx.NewManage(tdx.WithDialGbbqDefault())
 	logs.PanicErr(err)
 
-	p := extend.NewPullKline(extend.PullKlineConfig{
+	p, err := extend.NewPullKline(extend.PullKlineConfig{
 		Codes:      []string{code},
 		Tables:     extend.AllTable,
 		Dir:        filepath.Join(tdx.DefaultDatabaseDir, "kline"),
 		Goroutines: 1,
 		StartAt:    time.Time{},
 	})
+	logs.PanicErr(err)
 
 	err = p.Update(m)
 	logs.PanicErr(err)
