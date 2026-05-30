@@ -126,7 +126,15 @@ func (this quote) Decode(bs []byte) QuotesResp {
 		}
 		bs, sec.K = DecodeK(bs[9:])
 		bs, sec.ReversedBytes0 = CutInt(bs)
-		sec.ServerTime = fmt.Sprintf("%d", sec.ReversedBytes0)
+		// 将 YYYYMMDD 格式转换为 YYYY-MM-DD 格式
+		if sec.ReversedBytes0 > 0 {
+			year := sec.ReversedBytes0 / 10000
+			month := (sec.ReversedBytes0 % 10000) / 100
+			day := sec.ReversedBytes0 % 100
+			sec.ServerTime = fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+		} else {
+			sec.ServerTime = ""
+		}
 		bs, sec.ReversedBytes1 = CutInt(bs)
 		bs, sec.TotalHand = CutInt(bs)
 		bs, sec.Intuition = CutInt(bs)
