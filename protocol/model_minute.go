@@ -14,11 +14,12 @@ type MinuteResp struct {
 type PriceNumber struct {
 	Time   string
 	Price  Price
+	Avg    Price
 	Number int
 }
 
 func (this PriceNumber) String() string {
-	return fmt.Sprintf("%s \t%-6s \t%-6d(手)", this.Time, this.Price, this.Number)
+	return fmt.Sprintf("%s \t%-6s \t%-6s \t%-6d(手)", this.Time, this.Price, this.Avg, this.Number)
 }
 
 type minute struct{}
@@ -39,30 +40,46 @@ func (this *minute) Frame(code string) (*Frame, error) {
 
 func (this *minute) Decode(bs []byte) (*MinuteResp, error) {
 
-	if len(bs) < 6 {
+	if len(bs) < 4 {
 		return nil, errors.New("数据长度不足")
 	}
 
 	resp := &MinuteResp{
 		Count: Uint16(bs[:2]),
 	}
-	//2-6字节是啥?
-	bs = bs[6:]
-	price := Price(0)
+	bs = bs[4:]
 
-	t := time.Date(0, 0, 0, 9, 0, 0, 0, time.Local)
+	startPrice := Price(0)
+	startAvg := Price(0)
+
+	t := time.Date(0, 0, 0, 9, 30, 0, 0, time.Local)
 	for i := uint16(0); i < resp.Count; i++ {
+		var price Price
 		bs, price = GetPrice(bs)
-		bs, _ = CutInt(bs) //这个是什么
-		var number int
-		bs, number = CutInt(bs)
-		if i == 120 {
-			t = t.Add(time.Hour * 2)
+
+		var avg Price
+		bs, avg = GetPrice(bs)
+
+		var vol int
+		bs, vol = CutInt(bs)
+
+		if i > 0 {
+			price += startPrice
+			avg += startAvg
+		} else {
+			startPrice = price
+			startAvg = avg
 		}
+
+		if i == 120 {
+			t = t.Add(time.Minute * 90)
+		}
+
 		resp.List = append(resp.List, PriceNumber{
-			Time:   t.Add(time.Minute * time.Duration(i)).Format("15:04"),
-			Price:  price,
-			Number: number,
+			Time:   t.Add(time.Minute * time.Duration(i+1)).Format("15:04"),
+			Price:  price * 10,
+			Avg:    avg / 10,
+			Number: vol,
 		})
 	}
 

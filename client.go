@@ -422,10 +422,8 @@ func (this *Client) GetGbbqAll() (map[string][]*protocol.Gbbq, error) {
 	return gbbqs, nil
 }
 
-// GetMinute 获取分时数据,todo 解析好像不对,先用历史数据
+// GetMinute 获取分时数据
 func (this *Client) GetMinute(code string) (*protocol.MinuteResp, error) {
-	return this.GetHistoryMinute(time.Now().Format("20060102"), code)
-
 	f, err := protocol.MMinute.Frame(code)
 	if err != nil {
 		return nil, err
