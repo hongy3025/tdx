@@ -11,7 +11,7 @@ const (
 	DefaultClients     = 1
 	DefaultRetry       = 3
 	DefaultDataDir     = "./data"
-	DefaultDatabaseDir = "./data/database"
+	DefaultDatabaseDir = "./.data/database"
 	DefaultCodesSpec   = "0 1 9 * * *"
 	DefaultWorkdaySpec = "0 3 9 * * *"
 	DefaultGbbqSpec    = "0 5 9 * * *"
