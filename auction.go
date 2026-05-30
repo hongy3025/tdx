@@ -79,7 +79,15 @@ func BatchGetCallAuction(pool IPool, cfg AuctionConfig) ([]*AuctionResult, error
 	p, err := ants.NewPoolWithFunc(cfg.PoolSize, func(i interface{}) {
 		defer wg.Done()
 
-		code := i.(string)
+		code, ok := i.(string)
+		if !ok {
+			mu.Lock()
+			results = append(results, &AuctionResult{
+				Error: fmt.Errorf("ants 池收到非 string 类型参数: %T", i),
+			})
+			mu.Unlock()
+			return
+		}
 		result := &AuctionResult{Code: code}
 
 		// 从连接池获取客户端
