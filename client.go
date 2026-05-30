@@ -14,7 +14,6 @@ import (
 	"github.com/injoyai/ios/client"
 	"github.com/injoyai/ios/module/common"
 	"github.com/injoyai/logs"
-	"github.com/injoyai/tdx/lib/bse"
 	"github.com/injoyai/tdx/protocol"
 )
 
@@ -234,25 +233,6 @@ func (this *Client) GetCode(exchange protocol.Exchange, start uint16) (*protocol
 func (this *Client) GetCodeAll(exchange protocol.Exchange) (*protocol.CodeResp, error) {
 	resp := &protocol.CodeResp{}
 
-	//通达信没有北交所代码列表,通过爬虫的方式从北交所官网获取,放在这里是为了方便业务逻辑
-	//不放在extend包时防止循环引用
-	//todo 这是临时方案,等通达信有北交所代码列表时再改
-	if exchange == protocol.ExchangeBJ {
-		codes, err := bse.GetCodes()
-		if err != nil {
-			return nil, err
-		}
-		resp.Count = uint16(len(codes))
-		for _, v := range codes {
-			resp.List = append(resp.List, &protocol.Code{
-				Code:      v.Code,
-				Name:      v.Name,
-				LastPrice: v.Last,
-			})
-		}
-		return resp, nil
-	}
-
 	size := uint16(1000)
 	for start := uint16(0); ; start += size {
 		r, err := this.GetCode(exchange, start)
@@ -344,30 +324,28 @@ func (this *Client) GetQuote(codes ...string) (protocol.QuotesResp, error) {
 	}
 	quotes := result.(protocol.QuotesResp)
 
-	{ //todo 临时处理下先,后续优化,感觉有问题
-		//判断长度和预期是否一致
-		if len(quotes) != len(codes) {
-			return nil, fmt.Errorf("预期%d个，实际%d个", len(codes), len(quotes))
-		}
-		for i, code := range codes {
-			if !protocol.IsStock(code) {
-				m := DefaultCodes.Get(code)
-				if m == nil {
-					return nil, fmt.Errorf("未查询到代码[%s]相关信息", code)
-				}
-				for ii, v := range quotes[i].SellLevel {
-					quotes[i].SellLevel[ii].Price = m.Price(v.Price)
-				}
-				for ii, v := range quotes[i].BuyLevel {
-					quotes[i].BuyLevel[ii].Price = m.Price(v.Price)
-				}
-				quotes[i].K = protocol.K{
-					Last:  m.Price(quotes[i].K.Last),
-					Open:  m.Price(quotes[i].K.Open),
-					High:  m.Price(quotes[i].K.High),
-					Low:   m.Price(quotes[i].K.Low),
-					Close: m.Price(quotes[i].K.Close),
-				}
+	// 指数/ETF等非股票代码价格小数位与股票不同，通过DefaultCodes中存储的精度信息修正
+	if len(quotes) != len(codes) {
+		return nil, fmt.Errorf("预期%d个，实际%d个", len(codes), len(quotes))
+	}
+	for i, code := range codes {
+		if !protocol.IsStock(code) {
+			m := DefaultCodes.Get(code)
+			if m == nil {
+				return nil, fmt.Errorf("未查询到代码[%s]相关信息", code)
+			}
+			for ii, v := range quotes[i].SellLevel {
+				quotes[i].SellLevel[ii].Price = m.Price(v.Price)
+			}
+			for ii, v := range quotes[i].BuyLevel {
+				quotes[i].BuyLevel[ii].Price = m.Price(v.Price)
+			}
+			quotes[i].K = protocol.K{
+				Last:  m.Price(quotes[i].K.Last),
+				Open:  m.Price(quotes[i].K.Open),
+				High:  m.Price(quotes[i].K.High),
+				Low:   m.Price(quotes[i].K.Low),
+				Close: m.Price(quotes[i].K.Close),
 			}
 		}
 	}
@@ -473,19 +451,23 @@ func (this *Client) GetTradeAll(code string) (*protocol.TradeResp, error) {
 	return this.GetMinuteTradeAll(code)
 }
 
-// GetMinuteTradeAll 获取分时全部交易详情,todo 只做参考 因为交易实时在进行,然后又是分页读取的,所以会出现读取间隔内产生的交易会丢失
+// GetMinuteTradeAll 获取分时全部交易详情
+// 交易实时进行中分页读取，读取间隔内产生的新交易会丢失
 func (this *Client) GetMinuteTradeAll(code string) (*protocol.TradeResp, error) {
+	return this.GetMinuteTradeAllWithBatchSize(code, 1800)
+}
+
+// GetMinuteTradeAllWithBatchSize 通过指定分页大小获取分时全部交易详情
+func (this *Client) GetMinuteTradeAllWithBatchSize(code string, batchSize uint16) (*protocol.TradeResp, error) {
 	resp := &protocol.TradeResp{}
-	size := uint16(1800)
-	for start := uint16(0); ; start += size {
-		r, err := this.GetMinuteTrade(code, start, size)
+	for start := uint16(0); ; start += batchSize {
+		r, err := this.GetMinuteTrade(code, start, batchSize)
 		if err != nil {
 			return nil, err
 		}
 		resp.Count += r.Count
 		resp.List = append(r.List, resp.List...)
-
-		if r.Count < size {
+		if r.Count < batchSize {
 			break
 		}
 	}
